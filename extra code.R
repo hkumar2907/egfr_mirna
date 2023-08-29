@@ -46,3 +46,32 @@ write_clip(WES_t1)
 write_clip(WES_t2)
 write_clip(Geo_t1)
 write_clip(Geo_t2)
+# miRNA Differential Analysis WRONG ---- 
+# examining differentially expressed miRNAs between high and low EGFR expressing samples
+# just getting the data
+EGFRData <- mRNACommon[which(mRNACommon$Gene_Name == 'EGFR'),-1]
+EGFR_indices <- order(EGFRData)
+#creating the design matrix
+design_matrix <- model.matrix(~ as.factor(rep(c(rep(1, 79), rep(0, 80)))))
+#finding out which samples express more EGFR than others
+EGFRData <- EGFRData[EGFR_indices]
+design_matrix <- design_matrix[EGFR_indices,]
+lowEGFR <- EGFRData[1, 1:(ncol(EGFRData)/2)]
+highEGFR <- EGFRData[1, (ncol(EGFRData)/2 + 1): ncol(EGFRData)]
+#splitting the miRNA samples based on high and low egfr
+lowEGFRgene = intersect(colnames(miRNACommon), colnames(highEGFR))
+#lowEGFRgene = miRNACommon[, c(1, which(colnames(miRNACommon) %in% lowEGFRgene))]
+highEGFRgene = intersect(colnames(miRNACommon), colnames(lowEGFR))
+#highEGFRgene = miRNACommon[, c(1, which(colnames(miRNACommon) %in% highEGFRgene))]
+#conducting ttest
+fitmiRNA <- lmFit(normalizedmiRNACommon, design = design_matrix)
+fitmiRNA <- eBayes(fitmiRNA)
+tablefitmiRNA <- topTable(fitmiRNA, coef = 2, , number=Inf)
+#visualizing the p-Values
+hist(tablefitmiRNA$P.Value, breaks = 20, col = "blue", main = "Histogram of p-values", xlab = "p-value")
+#getting the genenames
+common_rows <- intersect(rownames(tablefitmiRNA), rownames(miRNACommon))
+miRNACommon <- miRNACommon[common_rows,]
+#normalizing the microRNA EGFR data
+normalizedmiRNACommon = normalizeBetweenArrays(miRNACommon[, 2:ncol(miRNACommon)], method = "cyclicloess")
+boxplot(normalizedmiRNACommon)

@@ -57,10 +57,12 @@
 # Visualization ----
   #creating a box plot of all the means for each patient (patient on x axis)
   boxplot(mRNACommon[,2:ncol(mRNACommon)]) #all means centered at zero
+  library("FactoMineR")
   arrayPCA <- PCA(mRNACommon[,2:ncol(mRNACommon)], graph = FALSE)
   #performing principal component analysis by transposing the array
   patienPCA <- PCA(t(mRNACommon[,2:ncol(mRNACommon)]),scale.unit = TRUE, graph = FALSE)
   #graphing the individual pca
+  library("factoextra")
   fviz_pca_ind(patienPCA)
   #plots the variances (%) for each PC 
   fviz_eig(patienPCA, addlabels = TRUE)
@@ -95,35 +97,6 @@
   row_ids <- mRNACommon$Gene_Name
   mRNACommon <- data.matrix(mRNACommon[,-1])
   rownames(mRNACommon) <- row_ids
-# miRNA Differential Analysis WRONG ---- 
-# examining differentially expressed miRNAs between high and low EGFR expressing samples
-# just getting the data
-EGFRData <- mRNACommon[which(mRNACommon$Gene_Name == 'EGFR'),-1]
-EGFR_indices <- order(EGFRData)
-#creating the design matrix
-design_matrix <- model.matrix(~ as.factor(rep(c(rep(1, 79), rep(0, 80)))))
-#finding out which samples express more EGFR than others
-EGFRData <- EGFRData[EGFR_indices]
-design_matrix <- design_matrix[EGFR_indices,]
-lowEGFR <- EGFRData[1, 1:(ncol(EGFRData)/2)]
-highEGFR <- EGFRData[1, (ncol(EGFRData)/2 + 1): ncol(EGFRData)]
-#splitting the miRNA samples based on high and low egfr
-lowEGFRgene = intersect(colnames(miRNACommon), colnames(highEGFR))
-#lowEGFRgene = miRNACommon[, c(1, which(colnames(miRNACommon) %in% lowEGFRgene))]
-highEGFRgene = intersect(colnames(miRNACommon), colnames(lowEGFR))
-#highEGFRgene = miRNACommon[, c(1, which(colnames(miRNACommon) %in% highEGFRgene))]
-#conducting ttest
-fitmiRNA <- lmFit(normalizedmiRNACommon, design = design_matrix)
-fitmiRNA <- eBayes(fitmiRNA)
-tablefitmiRNA <- topTable(fitmiRNA, coef = 2, , number=Inf)
-#visualizing the p-Values
-hist(tablefitmiRNA$P.Value, breaks = 20, col = "blue", main = "Histogram of p-values", xlab = "p-value")
-#getting the genenames
-common_rows <- intersect(rownames(tablefitmiRNA), rownames(miRNACommon))
-miRNACommon <- miRNACommon[common_rows,]
-#normalizing the microRNA EGFR data
-normalizedmiRNACommon = normalizeBetweenArrays(miRNACommon[, 2:ncol(miRNACommon)], method = "cyclicloess")
-boxplot(normalizedmiRNACommon)
 #List 1 miRNA Differential Analysis ----
   #getting the EGFR data from the mRNA data and then sorting
   thr <- median(as.numeric(mRNACommon[which(rownames(mRNACommon) == 'EGFR'),]))
@@ -183,19 +156,6 @@ boxplot(normalizedmiRNACommon)
   fitmiRNA_4 <- lmFit(normalizedmiRNACommon[,match(colnames(mRNACommon[,!is.na(pos)]), table=colnames(normalizedmiRNACommon))], design = design_matrix_4)
   fitmiRNA_4 <- eBayes(fitmiRNA_4)
   tablefitmiRNA_4 <- topTable(fitmiRNA_4, coef = 2, , number=Inf)
-#Extra code----
-intersect(rownames(tablefitmiRNA_1)[1:100], rownames(tablefitmiRNA_4)[1:100])
-tablefitmiRNA_1
-require(fgsea)
-require(msigdbr)
-gene_set <- msigdbr(species = 'Homo sapiens', category = 'H')
-gene_set <- split(gene_set$gene_symbol, gene_set$gs_name)
-fgsea_res <- fgsea(pathways = gene_set, stats = setNames(tablefitmiRNA_1$logFC, ))
-fitmiRNA_1 <- lmFit(t(scale(t(normalizedmiRNACommon), scale = FALSE))[,match(colnames(mRNACommon), table=colnames(normalizedmiRNACommon))], design = design_matrix)
-plot(rowMeans(log(exp(normalizedmiRNACommon)+1)), sqrt(apply(normalizedmiRNACommon, 1, var)))
-boxplot(log(exp(normalizedmiRNACommon)+1))
-
-
 #miRNA survival correlation Analysis  ----
   miRNAList <- 'hsa-miR-219-2-3p'
   miRNAData <- normalizedmiRNACommon[which(rownames(normalizedmiRNACommon) == miRNAList),]
@@ -242,24 +202,6 @@ boxplot(log(exp(normalizedmiRNACommon)+1))
     # rankProdGenesTVal <- topGene(rankProdTVal,method="pval",logged = FALSE, gene.names = common_ids, cutoff = 0.05)
     # View(rankProdGenesTVal[["Table1"]])
     # View(rankProdGenesTVal[["Table2"]])
-#Crosstalkr ----
-    library("crosstalkr")
-    library(dplyr)
-    library(STRINGdb)
-    string_db <-  STRINGdb$new( version="11.5", species=9606,score_threshold=200, network_type="full", input_directory="")
-    exampleMap <- string_db$map( rankProdGenes[["Table1"]], "gene.index", removeUnmappedRows = TRUE )
-    egfrdb <- string_db$get_neighbors('egfr')
-    exp <- tablefitmiRNA_1$logFC
-    names(exp) <- rownames(tablefitmiRNA_1)
-    g <- gfilter(method = "value",g=g_ppi, cache = NULL, val=exp, val_name = "expression", use_ppi = FALSE, desc = TRUE,n=100)
-# Comparison ----
+ # Comparison ----
     armandatatable1 <- read_excel("miRNAs Rank prod  (1).xlsx", sheet = 2)
     armandatatable2 <- read_excel("miRNAs Rank prod  (1).xlsx", sheet = 1)
-#---- 
-#Bar plots showing high to low egfr expression b/w high low miR
-    ordergenomicData <- order(normalizedmiRNACommon[rownames(normalizedmiRNACommon) == "hsa-miR-195"])
-    genomicData <- normalizedmiRNACommon[rownames(normalizedmiRNACommon) == "hsa-miR-195"][ordergenomicData]
-    EGFRorderedData <- mRNACommon[rownames(mRNACommonData) == 'EGFR',match(colnames(normalizedmiRNACommon)[ordergenomicData], colnames(mRNACommon))]
-    barplot(EGFRorderedData)
-    miOrderedData <- normalizedmiRNACommon[rownames(normalizedmiRNACommon) == "hsa-miR-195", match(colnames(normalizedmiRNACommon)[ordergenomicData], colnames(mRNACommon))]
-    barplot(miOrderedData)
