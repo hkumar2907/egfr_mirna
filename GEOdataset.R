@@ -1,5 +1,4 @@
 #Load appropriate libraries ----
-library(TCGAbiolinks)
 library(GEOquery)
 library(GSVA)
 library(msigdbr)
@@ -45,8 +44,12 @@ library(RankProd)
   rownames(miRNA_exprs_t) <- miRNA_exprs_t$Transcript.ID.Array.Design.
   miRNA_exprs_t$ID <- NULL
   miRNA_exprs_t$Transcript.ID.Array.Design. <- NULL
+  #converting miRNA base version to version 22
+    list <- miRNAVersionConvert(rownames(miRNA_exprs_t),targetVersion="v22",exact=TRUE,verbose=TRUE) #converting to new version
+    naIndex <- which(is.na(list$TargetName))
+    miRNA_exprs_t <- miRNA_exprs_t[-naIndex,]
+    rownames(miRNA_exprs_t) <- list$TargetName[-naIndex]
 #mRNA labels
-  library(dplyr)
   table <- read.table("GBM GEO annotation 2.txt", header = TRUE, sep = "\t", fill = TRUE)
   gene_exprs<- cbind(rownames(gene_exprs), gene_exprs)
   colnames(gene_exprs)[1] ="ProbeName"
@@ -56,7 +59,6 @@ library(RankProd)
   gene_exprs <- gene_exprs[, 1:(ncol(gene_exprs) - 5)]
   gene_exprs <- gene_exprs[, -1]
 #Creating the lists ----
-library(limma)
 #list1
   thr <- median(as.numeric(gene_exprs[which(rownames(gene_exprs) == 'EGFR'),]))
   pos <- as.factor(ifelse(gene_exprs[which(rownames(gene_exprs) == 'EGFR'),] > thr, 'pos', 'neg'))
@@ -73,15 +75,13 @@ library(limma)
   fitmiRNA_2b <- eBayes(fitmiRNA_2b)
   tablefitmiRNA_2b <- topTable(fitmiRNA_2b, coef = 2, , number=Inf)
 #list3
-  library("msigdbr")
-  allGeneSets <- msigdbr(species = "Homo sapiens")
-  geneSet1 <- allGeneSets[allGeneSets$gs_name == "HALLMARK_PI3K_AKT_MTOR_SIGNALING",]
+  #allGeneSets <- msigdbr(species = "Homo sapiens")
+  geneSet1 <- allGeneSets[allGeneSets$gs_name == "BIOCARTA_EGF_PATHWAY",]
   geneSet1 <- unique(geneSet1$gene_symbol)
-  library("GSVA")
   for (i in 1:16){
     gene_exprs[,i] <- as.numeric(gene_exprs[,i])
   }
-  ssAnalysis <- gsva(as.matrix(gene_exprs), split(geneSet1$gene_symbol, geneSet1$gs_name), method = "ssgsea", mx.diff = FALSE )
+  ssAnalysis <- gsva(as.matrix(gene_exprs), list(geneSet1), method = "ssgsea", mx.diff = FALSE )
   thr <- median(as.vector(ssAnalysis))
   pos <- as.factor(ifelse(ssAnalysis > thr, 'pos', 'neg'))
   design_matrix <- model.matrix(~pos)

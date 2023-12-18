@@ -1,32 +1,17 @@
 # Installing Packages ----
-  install.packages("dplyr")                          # Install dplyr package
   library("dplyr") # Load dplyr package
-  install.packages("corrr")
   library('corrr')
-  install.packages("ggcorrplot")
   library(ggcorrplot)
-  install.packages("FactoMineR")
   library("FactoMineR")
-  install.packages("factoextra")
   library("factoextra")
-  if (!require("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-  BiocManager::install("DESeq2")
   library( "DESeq2" )
-  BiocManager::install("limma")
-  BiocManager::install("GSVA", force = TRUE)
   library("GSVA")
-  install.packages("jsonlite")
   library(jsonlite)
-  BiocManager::install("fgsea")
   library("fgsea")
-  install.packages("survival")  # Install the package
   library(survival)
-  BiocManager::install("RankProd")
-  install.packages("msigdbr")
   library("msigdbr")
-  install.packages("crosstalkr")
-  BiocManager::install("STRINGdb")
+  library("RankProd")
+  library(miRBaseConverter)
 # Loading CGGA Data -----
   #Dataset 2 mRNAseq with 693 samples NGS method
   clinical693 <- read.table('/Users/harshitakumar/Documents/Research/Dhawan Lab/EGFR Project/CGGA.mRNAseq_693_clinical.20200506.txt', header = TRUE, fill = TRUE)
@@ -37,7 +22,7 @@
   clinicalmiRNA <- read.table('/Users/harshitakumar/Documents/Research/Dhawan Lab/EGFR Project/CGGA.microRNA_array_198_clinical.20200506.txt', header = TRUE, fill = TRUE)
   clinicalmiRNA <- clinicalmiRNA[, -c(4, 15:18)]
   names(clinicalmiRNA) <- c("CGGA_ID", "PRS_type", "Histology", "Grade", "Gender", "Age", "OS", "Censor", "Radio_Status", "Chemo_status", "IDH_mutation_status", "X1p19q_codeletion_status", "MGMTp_methylation_status")
-  arraymiRNA <- read.table('/Users/harshitakumar/Documents/Research/Dhawan Lab/EGFR Project/CGGA.microRNA_array_198_gene_level.20200506.txt', header = TRUE, fill = TRUE)
+  arraymiRNA <- read.table('/Users/harshitakumar/Documents/Research/Dhawan Lab/EGFR Project/CGGA.microRNA_array_198_gene_level.20200506.txt', header = TRUE, fill = TRUE, comment.char = "")
   #Dataset 4 for mRNA array data with 301 samples
   clinicalmRNAarray <- read.table('/Users/harshitakumar/Documents/Research/Dhawan Lab/EGFR Project/CGGA.mRNA_array_301_clinical.20200506.txt', header = TRUE, fill = TRUE)
   clinicalmRNAarray <- clinicalmRNAarray[, -c(4:5, 15:18)]
@@ -81,22 +66,28 @@
   fviz_eig(patienPCAmi, addlabels = TRUE)
 # Further preprocessing and MicroRNA preprocessing + Visualization ----
   #need to first remove genes that have very low variance across all samples
-  genemRNAsd <- apply(t(mRNACommon[,2:ncol(mRNACommon)]),2,sd)
-  genemRNAmean <- apply(t(mRNACommon[,2:ncol(mRNACommon)]),2,mean)
-  #creating scatter plot of sd vs mean
-  plot(genemRNAsd, genemRNAmean)
-  #histogram of variance
-  hist(genemRNAsd, breaks = 40)
-  library("limma")
-  normalizedmiRNACommon = normalizeBetweenArrays(miRNACommon[, 2:ncol(miRNACommon)], method = "quantile")
-  rownames(normalizedmiRNACommon) <- miRNACommon$microRNA_ID
-  boxplot(normalizedmiRNACommon)
-  miRNAPCA <- PCA(t(normalizedmiRNACommon),scale.unit = TRUE, graph = FALSE)
-  fviz_pca_ind(miRNAPCA)
-  fviz_eig(miRNAPCA, addlabels = TRUE)
-  row_ids <- mRNACommon$Gene_Name
-  mRNACommon <- data.matrix(mRNACommon[,-1])
-  rownames(mRNACommon) <- row_ids
+    genemRNAsd <- apply(t(mRNACommon[,2:ncol(mRNACommon)]),2,sd)
+    genemRNAmean <- apply(t(mRNACommon[,2:ncol(mRNACommon)]),2,mean)
+    #creating scatter plot of sd vs mean
+    plot(genemRNAsd, genemRNAmean)
+    #histogram of variance
+    hist(genemRNAsd, breaks = 40)
+    library("limma")
+    normalizedmiRNACommon = normalizeBetweenArrays(miRNACommon[, 2:ncol(miRNACommon)], method = "quantile")
+    rownames(normalizedmiRNACommon) <- miRNACommon$microRNA_ID
+    boxplot(normalizedmiRNACommon)
+    miRNAPCA <- PCA(t(normalizedmiRNACommon),scale.unit = TRUE, graph = FALSE)
+    fviz_pca_ind(miRNAPCA)
+    fviz_eig(miRNAPCA, addlabels = TRUE)
+    row_ids <- mRNACommon$Gene_Name
+    mRNACommon <- data.matrix(mRNACommon[,-1])
+    rownames(mRNACommon) <- row_ids
+  #converting miRNA to new version
+    list <- gsub("#","*" ,miRNACommon$microRNA_ID) #converting # to *
+    list <- miRNAVersionConvert(list,targetVersion="v22",exact=TRUE,verbose=TRUE) #converting to new version
+    naIndex <- which(is.na(list$TargetName))
+    miRNACommon <- miRNACommon[-naIndex,]
+    miRNACommon$microRNA_ID <- list$TargetName[-naIndex]
 #List 1 miRNA Differential Analysis ----
   #getting the EGFR data from the mRNA data and then sorting
   thr <- median(as.numeric(mRNACommon[which(rownames(mRNACommon) == 'EGFR'),]))
@@ -126,14 +117,14 @@
   #egfrPathwaySet <- as.matrix(egfrPathwaySet[["BIOCARTA_EGF_PATHWAY"]][["geneSymbols"]])
   allGeneSets <- msigdbr(species = "Homo sapiens")
   #Getting Gene Sets
-    geneSet1 <- allGeneSets[allGeneSets$gs_name == "HALLMARK_PI3K_AKT_MTOR_SIGNALING",]
-    geneSet1 <- unique(geneSet1$gene_symbol)
+    geneSet4 <- allGeneSets[allGeneSets$gs_name == "HALLMARK_PI3K_AKT_MTOR_SIGNALING",]
+    geneSet4 <- unique(geneSet4$gene_symbol)
     geneSet2 <- allGeneSets[allGeneSets$gs_name == "REACTOME_SIGNALING_BY_EGFR",]
     geneSet2 <- unique(geneSet2$gene_symbol)
     geneSet3 <- allGeneSets[allGeneSets$gs_name == "BIOCARTA_EGFR_SMRTE_PATHWAY",]
     geneSet3 <- unique(geneSet3$gene_symbol)
-    geneSet4 <- allGeneSets[allGeneSets$gs_name == "REACTOME_EGFR_DOWNREGULATION",]
-    geneSet4 <- unique(geneSet4$gene_symbol)
+    geneSet1 <- allGeneSets[allGeneSets$gs_name == "BIOCARTA_EGF_PATHWAY",]
+    geneSet1 <- unique(geneSet1$gene_symbol)
     geneSet5 <- allGeneSets[allGeneSets$gs_name == "WP_EGFR_TYROSINE_KINASE_INHIBITOR_RESISTANCE",]
     geneSet5 <- unique(geneSet5$gene_symbol)
   library("GSVA")
@@ -157,7 +148,7 @@
   fitmiRNA_4 <- eBayes(fitmiRNA_4)
   tablefitmiRNA_4 <- topTable(fitmiRNA_4, coef = 2, , number=Inf)
 #miRNA survival correlation Analysis  ----
-  miRNAList <- 'hsa-miR-219-2-3p'
+  miRNAList <- 'hsa-miR-21'
   miRNAData <- normalizedmiRNACommon[which(rownames(normalizedmiRNACommon) == miRNAList),]
   medianmiRNA <- median(as.vector(miRNAData))
   pos <- as.factor(ifelse(miRNAData > medianmiRNA, 'pos', 'neg'))
@@ -188,20 +179,12 @@
   #   allListUp <- merge(merge(merge(list1Up, list2Up,by = 0), list3Up, by = 0), list4Up, by = 0)
   #   allListDown <- c(list1Down[1:20,],list2Down[1:20,],list3Down[1:20,],list4Down[1:20,])
   #union of these lists
-    # miRNAList <- miRNACommon$microRNA_ID
-    # positionLists <- data.frame(match(miRNAList, rownames(list1Up)), match(miRNAList, rownames(list2Up)), match(miRNAList, rownames(list3Up)), match(miRNAList, rownames(list4Up)))
-    # rankProdUp <- RP.advance(positionLists, rep(1, length(miRNAList)),rep(1, length(miRNAList)), logged = FALSE)
-    library("RankProd")
     common_ids <-Reduce('intersect', list(rownames(tablefitmiRNA_1), rownames(tablefitmiRNA_2), rownames(tablefitmiRNA_3), rownames(tablefitmiRNA_4)))
     rankProdFC <- RP(cbind(tablefitmiRNA_1$logFC[match(common_ids, table=rownames(tablefitmiRNA_1))], tablefitmiRNA_2$logFC[match(common_ids, table=rownames(tablefitmiRNA_2))], tablefitmiRNA_3$logFC[match(common_ids, table=rownames(tablefitmiRNA_3))], tablefitmiRNA_4$logFC[match(common_ids, table=rownames(tablefitmiRNA_4))]), rep(1,4))
-    # rankProdTVal <- RP(cbind(tablefitmiRNA_1$t[match(common_ids, table=rownames(tablefitmiRNA_1))], tablefitmiRNA_2$t[match(common_ids, table=rownames(tablefitmiRNA_2))], tablefitmiRNA_3$t[match(common_ids, table=rownames(tablefitmiRNA_3))], tablefitmiRNA_4$t[match(common_ids, table=rownames(tablefitmiRNA_4))]), rep(1,4))
     common_ids <- t(as.data.frame(as.list(common_ids)))
     rankProdGenes <- topGene(rankProdFC,method="pval",logged = FALSE, gene.names = common_ids, cutoff = 0.05)
     View(rankProdGenes[["Table1"]])
     View(rankProdGenes[["Table2"]])
-    # rankProdGenesTVal <- topGene(rankProdTVal,method="pval",logged = FALSE, gene.names = common_ids, cutoff = 0.05)
-    # View(rankProdGenesTVal[["Table1"]])
-    # View(rankProdGenesTVal[["Table2"]])
- # Comparison ----
+#Comparison ----
     armandatatable1 <- read_excel("miRNAs Rank prod  (1).xlsx", sheet = 2)
     armandatatable2 <- read_excel("miRNAs Rank prod  (1).xlsx", sheet = 1)
